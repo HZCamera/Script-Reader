@@ -512,7 +512,7 @@ function track(tail){
   if(best>=0&&best+1>ptr)setPtr(best+1);
 }
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const MIC_MSG="Couldn't use the microphone. Inside the Claude app this page can't reach the mic, so open the HTML file in Chrome or Safari and allow microphone access. Back and Next still work here, as do Space and the arrow keys.";
+const MIC_MSG="Couldn't use the microphone. Allow microphone access for this site in your browser settings, then press Listen again. On an iPhone, if Chrome still refuses, open this page in Safari. Back and Next still work, as do Space and the arrow keys.";
 let rec=null,listening=false,lock=null;
 function setListenUI(){$('#listen').setAttribute('aria-pressed',String(listening));$('#listenLabel').textContent=listening?'Listening':'Listen';document.body.classList.toggle('listening',listening)}
 function startListen(){
