@@ -14,17 +14,17 @@
 :root{
   --paper:#fbfaf6; --ink:#1d1c20; --muted:#6c6972; --rule:#e2ded4; --chrome:#ffffff;
   --said:#9d9aa3; --live:#d63a2a; --live-ink:#ffffff; --btn:#f1eee6; --hla:.42;
-  --mark:#0b7f99; --mark-ink:#ffffff;
+  --mark:#0b7f99; --mark-ink:#ffffff; --flash:#bdf3ff;
   --f-ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-script:"Courier Prime","Courier New",Courier,monospace;
   --fs:18px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --paper:#16151a; --ink:#ebe8e1; --muted:#9a96a1; --rule:#2c2a32; --chrome:#1e1d23;
-  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; color-scheme:dark}}
+  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; --flash:#e6fbff; color-scheme:dark}}
 :root[data-theme="dark"]{
   --paper:#16151a; --ink:#ebe8e1; --muted:#9a96a1; --rule:#2c2a32; --chrome:#1e1d23;
-  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; color-scheme:dark}
+  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; --flash:#e6fbff; color-scheme:dark}
 
 body{background:var(--paper);color:var(--ink);font:15px/1.45 var(--f-ui)}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--chrome)}
@@ -116,6 +116,9 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
 .mk{display:inline-block;font:700 .6em/1.3 var(--f-ui);letter-spacing:.05em;text-transform:uppercase;background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:.15em .4em;margin-right:.3em;vertical-align:.2em;cursor:pointer;border:0;max-width:16em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk::before{content:"◆ "}
 .mk.hit{opacity:.45}
+.flash{position:fixed;inset:0;z-index:50;pointer-events:none;background:var(--flash);opacity:0}
+.flash.go{animation:flash var(--flash-ms,700ms) ease-out}
+@keyframes flash{0%{opacity:0}12%{opacity:var(--flash-peak,.55)}100%{opacity:0}}
 .cue-strip{max-width:40rem;width:100%;margin:0 auto;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;border-radius:8px;padding:8px 12px;background:color-mix(in srgb,var(--mark) 14%,var(--chrome));border:1px solid var(--mark);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .cue-strip .when{font-variant-numeric:tabular-nums;color:var(--mark);white-space:nowrap}
 .cue-strip.now{background:var(--mark);color:var(--mark-ink)}
@@ -179,6 +182,15 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
     <p class="hint" id="localNote" hidden></p>
     <p class="hint" id="micHint">Pick the mic closest to the cast, such as a lav receiver or the boom feed through an audio interface. The bar moves when the selected mic hears sound.</p>
 
+    <h2 class="sec">Mark cues</h2>
+    <label class="check"><input type="checkbox" id="flashOn" checked> Flash the screen when a mark is hit, for your peripheral vision</label>
+    <div class="row" id="flashOpts">
+      <button class="tbtn" type="button" data-fl="soft">Soft</button>
+      <button class="tbtn" type="button" data-fl="medium">Medium</button>
+      <button class="tbtn" type="button" data-fl="strong">Strong</button>
+      <button class="tbtn" type="button" id="flashTest">Test flash</button>
+    </div>
+
     <h2 class="sec">Text size</h2>
     <div class="row">
       <button class="tbtn" id="smaller" type="button" aria-label="Smaller text">A−</button>
@@ -189,6 +201,7 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
 
 <div id="banner" class="banner" role="status" hidden></div>
 
+<div id="flash" class="flash" aria-hidden="true"></div>
 <main class="page"><article id="script" class="script" aria-live="off"></article></main>
 
 <nav class="transport" aria-label="Scene controls">
@@ -455,6 +468,25 @@ function nextLine(){const s=starts.find(s=>s>ptr);setPtr(s===undefined?words.len
 function prevLine(){let s=0;for(const x of starts){if(x<ptr)s=x;else break}setPtr(s,'jump');heard=[]}
 
 /* ---------- focus marks ---------- */
+const FLASH={soft:[.3,550],medium:[.55,700],strong:[.85,900]};
+let flashOn=true,flashLvl='medium';
+try{flashOn=localStorage.getItem('sp-flash')!=='0';flashLvl=localStorage.getItem('sp-flashlvl')||'medium'}catch(_){}
+function applyFlash(){
+  const [pk,ms]=FLASH[flashLvl]||FLASH.medium;const f=$('#flash');
+  f.style.setProperty('--flash-peak',pk);f.style.setProperty('--flash-ms',ms+'ms');
+  $('#flashOn').checked=flashOn;
+  document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.fl===flashLvl)));
+  try{localStorage.setItem('sp-flash',flashOn?'1':'0');localStorage.setItem('sp-flashlvl',flashLvl)}catch(_){}
+}
+function flashCue(force){
+  if(!flashOn&&!force)return;
+  const f=$('#flash');f.classList.remove('go');void f.offsetWidth;f.classList.add('go');
+}
+$('#flash').addEventListener('animationend',()=>$('#flash').classList.remove('go'));
+$('#flashOn').onchange=e=>{flashOn=e.target.checked;applyFlash()};
+document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.onclick=()=>{flashLvl=b.dataset.fl;applyFlash();flashCue(true)});
+$('#flashTest').onclick=()=>flashCue(true);
+applyFlash();
 function markKey(){return 'sp-mk2:'+docName+':'+all.length}
 function saveMarks(){try{localStorage.setItem(markKey(),JSON.stringify([...markers].map(([g,m])=>[g,m.label])))}catch(_){}
   $('#markMode').textContent=markers.size?`Marks (${markers.size})`:'Marks'}
@@ -467,14 +499,15 @@ function loadMarks(){
 function placeMark(g,label){
   removeMark(g);
   const f=el('button','mk',label);f.type='button';f.dataset.mk=g;f.title='Focus mark: '+label;
-  all[g].el.before(f);markers.set(g,{label,el:f,at:all[g].at});
+  all[g].el.before(f);markers.set(g,{label,el:f,at:all[g].at,fired:all[g].at<=ptr});
   if(all[g].at<ptr)f.classList.add('hit');
 }
 function removeMark(i){const m=markers.get(i);if(m){m.el.remove();markers.delete(i)}}
 function updateCue(){
   const strip=$('#cueStrip');
   let up=null;for(const [g,m] of markers)if(m.at>=ptr&&(!up||m.at<up.m.at||(m.at===up.m.at&&g<up.g)))up={g,m};
-  markers.forEach(m=>m.el.classList.toggle('hit',m.at<ptr));
+  markers.forEach(m=>{m.el.classList.toggle('hit',m.at<ptr);
+    if(m.at<=ptr&&!m.fired){m.fired=true;if(listening||ptr>0)flashCue()}else if(m.at>ptr)m.fired=false});
   const d=up?up.m.at-ptr:Infinity;
   if(d<=WARN){
     $('#cueLabel').textContent=up.m.label;
