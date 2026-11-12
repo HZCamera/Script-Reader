@@ -39,6 +39,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,label.filebtn:fo
 .brand .doc{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
 .tally{width:10px;height:10px;border-radius:50%;background:var(--rule);flex:none;transition:background .2s}
 body.listening .tally{background:var(--live);box-shadow:0 0 0 4px color-mix(in srgb,var(--live) 25%,transparent)}
+.cog{display:inline-flex;align-items:center;justify-content:center;width:38px;padding:0}
+.cog[aria-expanded="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .tools{display:flex;align-items:center;gap:6px;margin-left:auto}
 @media (max-width:26rem){.prog{display:none}.brand .doc{max-width:38vw}}
 .prog{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:4px;white-space:nowrap}
@@ -145,7 +147,7 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
     <div class="tools">
       <span id="progress" class="prog"></span>
       <button class="tbtn" id="markMode" type="button" aria-pressed="false">Marks</button>
-      <button class="tbtn primary" id="openSetup" type="button">Sides &amp; mic</button>
+      <button class="tbtn cog" id="openSetup" type="button" aria-label="Settings" title="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.43 7.43 0 0 0 .05-.94 7.43 7.43 0 0 0-.05-.94l2.03-1.58a.48.48 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.48.48 0 0 0 13.92 2h-3.84a.48.48 0 0 0-.48.41l-.36 2.54a7.03 7.03 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.72 8.47a.47.47 0 0 0 .12.61l2.03 1.58a7.6 7.6 0 0 0 0 1.88l-2.03 1.58a.48.48 0 0 0-.12.61l1.92 3.32c.12.21.37.3.59.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54a7.03 7.03 0 0 0 1.62-.94l2.39.96c.22.08.47-.01.59-.22l1.92-3.32a.48.48 0 0 0-.12-.61l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2Z"/></svg></button>
     </div>
   </div>
   <div id="chips" class="chips" aria-label="Characters: tap a colour square to change it, tap a name to turn its highlight on or off"></div>
@@ -183,8 +185,10 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
     <p class="hint" id="micHint">Pick the mic closest to the cast, such as a lav receiver or the boom feed through an audio interface. The bar moves when the selected mic hears sound.</p>
 
     <h2 class="sec">Mark cues</h2>
-    <label class="check"><input type="checkbox" id="flashOn" checked> Flash the screen when a mark is hit, for your peripheral vision</label>
+    <p class="hint">Flash the screen when a mark is hit, for your peripheral vision.</p>
+    <input type="checkbox" id="flashOn" checked hidden>
     <div class="row" id="flashOpts">
+      <button class="tbtn" type="button" data-fl="off">Off</button>
       <button class="tbtn" type="button" data-fl="soft">Soft</button>
       <button class="tbtn" type="button" data-fl="medium">Medium</button>
       <button class="tbtn" type="button" data-fl="strong">Strong</button>
@@ -468,14 +472,15 @@ function nextLine(){const s=starts.find(s=>s>ptr);setPtr(s===undefined?words.len
 function prevLine(){let s=0;for(const x of starts){if(x<ptr)s=x;else break}setPtr(s,'jump');heard=[]}
 
 /* ---------- focus marks ---------- */
-const FLASH={soft:[.3,550],medium:[.55,700],strong:[.85,900]};
+const FLASH={soft:[.12,450],medium:[.22,550],strong:[.35,650]};
 let flashOn=true,flashLvl='medium';
 try{flashOn=localStorage.getItem('sp-flash')!=='0';flashLvl=localStorage.getItem('sp-flashlvl')||'medium'}catch(_){}
 function applyFlash(){
   const [pk,ms]=FLASH[flashLvl]||FLASH.medium;const f=$('#flash');
   f.style.setProperty('--flash-peak',pk);f.style.setProperty('--flash-ms',ms+'ms');
   $('#flashOn').checked=flashOn;
-  document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.fl===flashLvl)));
+  document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.setAttribute('aria-pressed',String(flashOn?b.dataset.fl===flashLvl:b.dataset.fl==='off')));
+  $('#flashTest').disabled=!flashOn;
   try{localStorage.setItem('sp-flash',flashOn?'1':'0');localStorage.setItem('sp-flashlvl',flashLvl)}catch(_){}
 }
 function flashCue(force){
@@ -484,7 +489,9 @@ function flashCue(force){
 }
 $('#flash').addEventListener('animationend',()=>$('#flash').classList.remove('go'));
 $('#flashOn').onchange=e=>{flashOn=e.target.checked;applyFlash()};
-document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.onclick=()=>{flashLvl=b.dataset.fl;applyFlash();flashCue(true)});
+document.querySelectorAll('#flashOpts [data-fl]').forEach(b=>b.onclick=()=>{
+  if(b.dataset.fl==='off'){flashOn=false;applyFlash();return}
+  flashOn=true;flashLvl=b.dataset.fl;applyFlash();flashCue(true)});
 $('#flashTest').onclick=()=>flashCue(true);
 applyFlash();
 function markKey(){return 'sp-mk2:'+docName+':'+all.length}
@@ -668,7 +675,7 @@ async function startListen(){
   stopMeter();
   if(micTrack){micTrack.stop();micTrack=null}
   if(micId&&!isIOS)micTrack=await getMicTrack();
-  if(micId&&!isIOS&&!micTrack)banner("Couldn't open the chosen microphone, so the system default is being used. Pick another in Sides & mic.",6000);
+  if(micId&&!isIOS&&!micTrack)banner("Couldn't open the chosen microphone, so the system default is being used. Pick another in Settings.",6000);
   try{recStart()}catch(_){banner(MIC_MSG);return}
   listening=true;heard=[];setListenUI();bannerEl.hidden=true;
   if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>lock=l).catch(()=>{});
@@ -681,7 +688,7 @@ function load(blocksIn,name){
   if(!blocksIn.some(b=>b.type==='speech')){statusEl.textContent="Couldn't find any character names. Check that names are in capitals on their own line, with dialogue directly below.";return false}
   blocks=blocksIn;hidden.clear();docName=name;closeMarkSheet();
   const n=render();
-  $('#docname').textContent=name;$('#setup').hidden=true;stopMeter();statusEl.textContent='';
+  $('#docname').textContent=name;$('#setup').hidden=true;$('#openSetup').setAttribute('aria-expanded','false');stopMeter();statusEl.textContent='';
   scrollTo({top:0});
   banner(`Loaded ${n} character${n===1?'':'s'} and ${starts.length} lines. Tap a character to turn its highlight off, or tap any word to jump there.`,6000);
   return true;
@@ -700,8 +707,8 @@ $('#file').onchange=async e=>{
 };
 $('#usePaste').onclick=()=>{const t=$('#paste').value;if(!t.trim()){statusEl.textContent='Paste a scene into the box first.';return}load(parseText(t),'Pasted sides')};
 $('#useSample').onclick=()=>load(parseText(SAMPLE),'Sample: The Truck');
-$('#openSetup').onclick=()=>{const s=$('#setup');s.hidden=!s.hidden;if(!s.hidden){scrollTo({top:0});listMics();if(meterStream===null&&$('#micFind').hidden)testMic()}else stopMeter()};
-$('#closeSetup').onclick=()=>{$('#setup').hidden=true;stopMeter()};
+$('#openSetup').onclick=()=>{const s=$('#setup');s.hidden=!s.hidden;$('#openSetup').setAttribute('aria-expanded',String(!s.hidden));if(!s.hidden){scrollTo({top:0});listMics();if(meterStream===null&&$('#micFind').hidden)testMic()}else stopMeter()};
+$('#closeSetup').onclick=()=>{$('#setup').hidden=true;$('#openSetup').setAttribute('aria-expanded','false');stopMeter()};
 $('#trackAction').onchange=e=>{trackAction=e.target.checked;closeMarkSheet();if(blocks.length)render()};
 $('#next').onclick=nextLine;$('#prev').onclick=prevLine;
 $('#listen').onclick=()=>listening?stopListen():startListen();
