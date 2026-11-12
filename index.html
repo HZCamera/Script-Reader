@@ -39,7 +39,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,label.filebtn:fo
 .brand .doc{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
 .tally{width:10px;height:10px;border-radius:50%;background:var(--rule);flex:none;transition:background .2s}
 body.listening .tally{background:var(--live);box-shadow:0 0 0 4px color-mix(in srgb,var(--live) 25%,transparent)}
-.tools{display:flex;align-items:center;gap:6px}
+.tools{display:flex;align-items:center;gap:6px;margin-left:auto}
+@media (max-width:26rem){.prog{display:none}.brand .doc{max-width:38vw}}
 .prog{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:4px;white-space:nowrap}
 .tbtn{border:1px solid var(--rule);background:var(--btn);border-radius:8px;padding:6px 10px;cursor:pointer;min-height:34px}
 .primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:500}
@@ -69,6 +70,11 @@ body.listening .tally{background:var(--live);box-shadow:0 0 0 4px color-mix(in s
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .check{display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:14px}
 .status{margin:0;font-size:14px;color:var(--live);min-height:1em}
+.sec{padding-top:12px;border-top:1px solid var(--rule)}
+.microw{display:flex;gap:8px;flex-wrap:wrap}
+.microw select{flex:1 1 14rem;min-width:0;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:8px;min-height:38px}
+.meter{height:6px;border-radius:3px;background:var(--rule);overflow:hidden}
+.meter span{display:block;height:100%;width:0;background:var(--live);transition:width .08s linear}
 
 .banner{max-width:40rem;margin:12px auto 0;border:1px solid var(--live);color:var(--ink);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--live) 10%,var(--paper));margin-inline:max(16px,env(safe-area-inset-left,0px))}
 @media (min-width:44rem){.banner{margin-inline:auto}}
@@ -133,10 +139,8 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
     </div>
     <div class="tools">
       <span id="progress" class="prog"></span>
-      <button class="tbtn" id="smaller" type="button" aria-label="Smaller text">A−</button>
-      <button class="tbtn" id="bigger" type="button" aria-label="Larger text">A+</button>
       <button class="tbtn" id="markMode" type="button" aria-pressed="false">Marks</button>
-      <button class="tbtn primary" id="openSetup" type="button">Load sides</button>
+      <button class="tbtn primary" id="openSetup" type="button">Sides &amp; mic</button>
     </div>
   </div>
   <div id="chips" class="chips" aria-label="Characters: tap a colour square to change it, tap a name to turn its highlight on or off"></div>
@@ -162,6 +166,20 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
     </div>
     <label class="check"><input type="checkbox" id="trackAction"> Follow stage directions too, for table reads where someone reads them aloud</label>
     <p id="status" class="status" role="status"></p>
+
+    <h2 class="sec">Microphone</h2>
+    <div class="microw">
+      <select id="micSel" aria-label="Microphone"><option value="">System default</option></select>
+      <button class="tbtn" id="micFind" type="button">Find microphones</button>
+    </div>
+    <div class="meter" aria-hidden="true"><span id="micLevel"></span></div>
+    <p class="hint" id="micHint">Pick the mic closest to the cast, such as a lav receiver or the boom feed through an audio interface. The bar moves when the selected mic hears sound.</p>
+
+    <h2 class="sec">Text size</h2>
+    <div class="row">
+      <button class="tbtn" id="smaller" type="button" aria-label="Smaller text">A−</button>
+      <button class="tbtn" id="bigger" type="button" aria-label="Larger text">A+</button>
+    </div>
   </div>
 </section>
 
@@ -513,9 +531,57 @@ function track(tail){
 }
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const MIC_MSG="Couldn't use the microphone. Allow microphone access for this site in your browser settings, then press Listen again. On an iPhone, if Chrome still refuses, open this page in Safari. Back and Next still work, as do Space and the arrow keys.";
-let rec=null,listening=false,lock=null;
+let rec=null,listening=false,lock=null,micTrack=null;
+let micId='';try{micId=localStorage.getItem('sp-mic')||''}catch(_){}
+const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+async function listMics(){
+  const sel=$('#micSel');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){sel.disabled=true;$('#micFind').hidden=true;return}
+  let mics=[];try{mics=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId&&d.deviceId!=='default')}catch(_){}
+  const named=mics.some(m=>m.label);
+  sel.textContent='';sel.append(new Option('System default',''));
+  mics.forEach((m,i)=>sel.append(new Option(m.label||('Microphone '+(i+1)),m.deviceId)));
+  if(micId&&!mics.some(m=>m.deviceId===micId)){micId=''}
+  sel.value=micId;
+  $('#micFind').hidden=named;
+}
+let meterStream=null,meterRaf=0,meterCtx=null;
+function stopMeter(){cancelAnimationFrame(meterRaf);if(meterStream)meterStream.getTracks().forEach(t=>t.stop());meterStream=null;if(meterCtx)meterCtx.close().catch(()=>{});meterCtx=null;$('#micLevel').style.width='0'}
+function runMeter(stream){
+  try{
+    meterCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const an=meterCtx.createAnalyser();an.fftSize=512;meterCtx.createMediaStreamSource(stream).connect(an);
+    const buf=new Uint8Array(an.fftSize);
+    const tick=()=>{an.getByteTimeDomainData(buf);let pk=0;for(const v of buf)pk=Math.max(pk,Math.abs(v-128));
+      $('#micLevel').style.width=Math.min(100,pk/128*220)+'%';meterRaf=requestAnimationFrame(tick)};tick();
+  }catch(_){}
+}
+async function testMic(){
+  stopMeter();
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
+  try{
+    meterStream=await navigator.mediaDevices.getUserMedia({audio:micId?{deviceId:{exact:micId}}:true});
+    await listMics();
+    if($('#setup').hidden||listening){stopMeter();return}
+    runMeter(meterStream);
+  }catch(e){$('#micHint').textContent="Couldn't open that microphone. Check it's connected and that this site is allowed to use the mic, then try again."}
+}
+$('#micFind').onclick=testMic;
+$('#micSel').onchange=e=>{micId=e.target.value;try{localStorage.setItem('sp-mic',micId)}catch(_){}testMic()};
+if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.mediaDevices.addEventListener('devicechange',listMics);
+if(isIOS)$('#micHint').textContent='On iPhone and iPad, iOS picks the microphone. Plug in or connect the mic you want (wired, Lightning/USB-C or Bluetooth) and it switches to it. The bar shows what it\'s hearing.';
+listMics();
+async function getMicTrack(){
+  if(!micId||isIOS)return null;
+  try{const st=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:micId}}});return st.getAudioTracks()[0]||null}
+  catch(_){return null}
+}
+function recStart(){
+  if(micTrack&&micTrack.readyState==='live'){try{rec.start(micTrack);return}catch(_){}}
+  rec.start();
+}
 function setListenUI(){$('#listen').setAttribute('aria-pressed',String(listening));$('#listenLabel').textContent=listening?'Listening':'Listen';document.body.classList.toggle('listening',listening)}
-function startListen(){
+async function startListen(){
   if(!SR){banner("This browser doesn't offer speech recognition. Use Chrome or Safari, or move through the scene with Back and Next.");return}
   rec=new SR();rec.continuous=true;rec.interimResults=true;rec.lang=navigator.language||'en-US';
   rec.onresult=e=>{let interim='';
@@ -525,20 +591,24 @@ function startListen(){
   rec.onerror=e=>{
     if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error)){stopListen();banner(MIC_MSG)}
     else if(e.error==='network'){stopListen();banner('Speech recognition needs an internet connection. Check the connection and press Listen again.')}};
-  rec.onend=()=>{if(listening)setTimeout(()=>{if(listening)try{rec.start()}catch(_){}},200)};
-  try{rec.start()}catch(_){banner(MIC_MSG);return}
+  rec.onend=()=>{if(listening)setTimeout(()=>{if(listening)try{recStart()}catch(_){}},200)};
+  stopMeter();
+  if(micTrack){micTrack.stop();micTrack=null}
+  micTrack=await getMicTrack();
+  if(micId&&!isIOS&&!micTrack)banner("Couldn't open the chosen microphone, so the system default is being used. Pick another in Sides & mic.",6000);
+  try{recStart()}catch(_){banner(MIC_MSG);return}
   listening=true;heard=[];setListenUI();bannerEl.hidden=true;
   if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>lock=l).catch(()=>{});
   if(nextEl)follow(nextEl,true);
 }
-function stopListen(){listening=false;try{rec&&rec.stop()}catch(_){}setListenUI();if(lock){lock.release().catch(()=>{});lock=null}}
+function stopListen(){listening=false;try{rec&&rec.stop()}catch(_){}if(micTrack){micTrack.stop();micTrack=null}setListenUI();if(lock){lock.release().catch(()=>{});lock=null}}
 
 /* ---------- loading ---------- */
 function load(blocksIn,name){
   if(!blocksIn.some(b=>b.type==='speech')){statusEl.textContent="Couldn't find any character names. Check that names are in capitals on their own line, with dialogue directly below.";return false}
   blocks=blocksIn;hidden.clear();docName=name;closeMarkSheet();
   const n=render();
-  $('#docname').textContent=name;$('#setup').hidden=true;statusEl.textContent='';
+  $('#docname').textContent=name;$('#setup').hidden=true;stopMeter();statusEl.textContent='';
   scrollTo({top:0});
   banner(`Loaded ${n} character${n===1?'':'s'} and ${starts.length} lines. Tap a character to turn its highlight off, or tap any word to jump there.`,6000);
   return true;
@@ -557,8 +627,8 @@ $('#file').onchange=async e=>{
 };
 $('#usePaste').onclick=()=>{const t=$('#paste').value;if(!t.trim()){statusEl.textContent='Paste a scene into the box first.';return}load(parseText(t),'Pasted sides')};
 $('#useSample').onclick=()=>load(parseText(SAMPLE),'Sample: The Truck');
-$('#openSetup').onclick=()=>{const s=$('#setup');s.hidden=!s.hidden;if(!s.hidden)scrollTo({top:0})};
-$('#closeSetup').onclick=()=>$('#setup').hidden=true;
+$('#openSetup').onclick=()=>{const s=$('#setup');s.hidden=!s.hidden;if(!s.hidden){scrollTo({top:0});listMics();if(meterStream===null&&$('#micFind').hidden)testMic()}else stopMeter()};
+$('#closeSetup').onclick=()=>{$('#setup').hidden=true;stopMeter()};
 $('#trackAction').onchange=e=>{trackAction=e.target.checked;closeMarkSheet();if(blocks.length)render()};
 $('#next').onclick=nextLine;$('#prev').onclick=prevLine;
 $('#listen').onclick=()=>listening?stopListen():startListen();
