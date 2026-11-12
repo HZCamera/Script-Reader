@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Sides Prompter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: sticky slate header with character chips, a single script column set like real sides, a fixed transport bar at the bottom. */
+:root{
+  --paper:#fbfaf6; --ink:#1d1c20; --muted:#6c6972; --rule:#e2ded4; --chrome:#ffffff;
+  --said:#9d9aa3; --live:#d63a2a; --live-ink:#ffffff; --btn:#f1eee6; --hla:.42;
+  --mark:#0b7f99; --mark-ink:#ffffff;
+  --f-ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-script:"Courier Prime","Courier New",Courier,monospace;
+  --fs:18px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#16151a; --ink:#ebe8e1; --muted:#9a96a1; --rule:#2c2a32; --chrome:#1e1d23;
+  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#16151a; --ink:#ebe8e1; --muted:#9a96a1; --rule:#2c2a32; --chrome:#1e1d23;
+  --said:#6b6873; --live:#ff5a47; --live-ink:#1a0d0b; --btn:#29272f; --hla:.26; --mark:#3cc8e0; --mark-ink:#05242c; color-scheme:dark}
+
+body{background:var(--paper);color:var(--ink);font:15px/1.45 var(--f-ui)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--chrome)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,label.filebtn:focus-within{outline:2px solid var(--live);outline-offset:2px}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--chrome);border-bottom:1px solid var(--rule);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 8px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;max-width:52rem;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand .name{font-weight:700;letter-spacing:.02em}
+.brand .doc{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.tally{width:10px;height:10px;border-radius:50%;background:var(--rule);flex:none;transition:background .2s}
+body.listening .tally{background:var(--live);box-shadow:0 0 0 4px color-mix(in srgb,var(--live) 25%,transparent)}
+.tools{display:flex;align-items:center;gap:6px}
+.prog{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:4px;white-space:nowrap}
+.tbtn{border:1px solid var(--rule);background:var(--btn);border-radius:8px;padding:6px 10px;cursor:pointer;min-height:34px}
+.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:500}
+
+.chips{display:flex;gap:6px;overflow-x:auto;max-width:52rem;margin:8px auto 0;padding-bottom:2px;scrollbar-width:none}
+.chip{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--rule);border-radius:999px;padding:2px 4px 2px 3px;white-space:nowrap;font-size:12px;letter-spacing:.06em;text-transform:uppercase;flex:none}
+.chip button{background:transparent;border:0;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;border-radius:999px}
+.chip .swb{padding:4px;display:inline-flex}
+.chip .nmb{display:inline-flex;gap:6px;padding:4px 8px 4px 4px}
+.chip .sw{width:16px;height:16px;border-radius:4px;background:hsl(var(--h) 95% 56% / calc(var(--hla) + .25));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 15%,transparent)}
+.chip.picking{border-color:var(--ink)}
+.palette{max-width:52rem;margin:8px auto 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+.palette .lbl{color:var(--muted);margin-right:4px}
+.palette .pick{width:30px;height:30px;border-radius:6px;border:2px solid transparent;cursor:pointer;background:hsl(var(--h) 95% 56% / calc(var(--hla) + .25))}
+.palette .pick[aria-pressed="true"]{border-color:var(--ink)}
+.palette input[type=range]{width:9rem;accent-color:var(--ink)}
+.chip .ct{color:var(--muted);font-variant-numeric:tabular-nums}
+.chip.hiddenc .nmb{opacity:.5;text-decoration:line-through}
+
+.setup{background:var(--chrome);border-bottom:1px solid var(--rule);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 20px}
+.setup-in{max-width:40rem;margin:0 auto;display:grid;gap:10px}
+.setup h2{margin:0;font-size:18px}
+.hint{margin:0;color:var(--muted);max-width:62ch}
+.filebtn{display:inline-flex;align-items:center;justify-content:center;border:1px dashed var(--muted);border-radius:10px;padding:14px;cursor:pointer;font-weight:500}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.setup textarea{width:100%;box-sizing:border-box;font:14px/1.4 var(--f-script);background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:8px;padding:10px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.check{display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:14px}
+.status{margin:0;font-size:14px;color:var(--live);min-height:1em}
+
+.banner{max-width:40rem;margin:12px auto 0;border:1px solid var(--live);color:var(--ink);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--live) 10%,var(--paper));margin-inline:max(16px,env(safe-area-inset-left,0px))}
+@media (min-width:44rem){.banner{margin-inline:auto}}
+
+.page{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 70vh}
+.script{max-width:40rem;margin:0 auto;font:var(--fs)/1.5 var(--f-script)}
+.scene{font:700 1em/1.4 var(--f-script);text-transform:uppercase;margin:1.6em 0 1em;letter-spacing:.02em;text-wrap:balance}
+.scene:first-child{margin-top:0}
+.action{margin:0 0 1em}
+.trans{text-align:right;margin:0 0 1em;text-transform:uppercase}
+.speech{position:relative;margin:0 4% 1em 10%;padding:.3em .55em .35em;border-radius:3px;background:hsl(var(--h) 95% 56% / var(--hla))}
+.speech.off{background:transparent}
+.cue{padding-left:28%;text-transform:uppercase}
+.cue .ext{color:var(--muted)}
+.paren{padding-left:14%;padding-right:10%;color:var(--muted);font-style:italic}
+.dia{margin:0}
+.speech.now::before,.action.now::before{content:"";position:absolute;left:-1.1em;top:.6em;width:.5em;height:.5em;border-radius:50%;background:var(--live)}
+.action{position:relative}
+.w{cursor:pointer;border-radius:2px}
+.w.said{color:var(--said)}
+.w.next{text-decoration:underline 2px var(--live);text-underline-offset:.2em}
+@media (max-width:30rem){.speech{margin-left:4%;margin-right:0}.cue{padding-left:18%}.paren{padding-left:8%}}
+
+.transport{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--chrome);border-top:1px solid var(--rule);
+  display:flex;flex-direction:column;gap:8px;
+  padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.transport .tbtn{min-width:5.5rem;min-height:44px}
+.listen{display:inline-flex;align-items:center;gap:8px;border-radius:999px;border:1px solid var(--live);background:transparent;color:var(--live);font-weight:700;padding:0 20px;min-height:48px;cursor:pointer;letter-spacing:.04em;text-transform:uppercase;font-size:13px}
+.listen .dot{width:10px;height:10px;border-radius:50%;background:var(--live)}
+.listen[aria-pressed="true"]{background:var(--live);color:var(--live-ink)}
+.listen[aria-pressed="true"] .dot{background:var(--live-ink);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.tr-row{display:flex;justify-content:center;align-items:center;gap:10px}
+.tbtn[aria-pressed="true"]{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
+body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
+.mk{display:inline-block;font:700 .6em/1.3 var(--f-ui);letter-spacing:.05em;text-transform:uppercase;background:var(--mark);color:var(--mark-ink);border-radius:3px;padding:.15em .4em;margin-right:.3em;vertical-align:.2em;cursor:pointer;border:0;max-width:16em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk::before{content:"◆ "}
+.mk.hit{opacity:.45}
+.cue-strip{max-width:40rem;width:100%;margin:0 auto;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:12px;border-radius:8px;padding:8px 12px;background:color-mix(in srgb,var(--mark) 14%,var(--chrome));border:1px solid var(--mark);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.cue-strip .when{font-variant-numeric:tabular-nums;color:var(--mark);white-space:nowrap}
+.cue-strip.now{background:var(--mark);color:var(--mark-ink)}
+.cue-strip.now .when{color:var(--mark-ink)}
+.mksheet{max-width:40rem;width:100%;margin:0 auto;display:grid;gap:8px}
+.mksheet .head{font-size:13px;color:var(--muted)}
+.mksheet input{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:10px;width:100%;box-sizing:border-box}
+.quick{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.quick button{white-space:nowrap;font-size:12px;min-height:32px}
+@media (prefers-reduced-motion:reduce){.listen .dot{animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="bar">
+    <div class="brand">
+      <span class="tally" aria-hidden="true"></span>
+      <div style="min-width:0">
+        <div class="name">Sides Prompter</div>
+        <div class="doc" id="docname">Sample scene</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span id="progress" class="prog"></span>
+      <button class="tbtn" id="smaller" type="button" aria-label="Smaller text">A−</button>
+      <button class="tbtn" id="bigger" type="button" aria-label="Larger text">A+</button>
+      <button class="tbtn" id="markMode" type="button" aria-pressed="false">Marks</button>
+      <button class="tbtn primary" id="openSetup" type="button">Load sides</button>
+    </div>
+  </div>
+  <div id="chips" class="chips" aria-label="Characters: tap a colour square to change it, tap a name to turn its highlight on or off"></div>
+  <div id="palette" class="palette" hidden>
+    <span class="lbl">Colour for <b id="palName"></b></span>
+    <span id="palSw" style="display:contents"></span>
+    <label class="lbl" for="palHue">Custom</label><input id="palHue" type="range" min="0" max="359" step="1">
+    <button class="tbtn" id="palDone" type="button">Done</button>
+  </div>
+</header>
+
+<section id="setup" class="setup" hidden>
+  <div class="setup-in">
+    <h2>Load sides</h2>
+    <p class="hint">PDF sides with selectable text work best; scanned pages have no text to read. You can also paste a scene with character names in capitals on their own line and the dialogue right underneath.</p>
+    <label class="filebtn">Choose a PDF or text file<input type="file" id="file" accept=".pdf,.txt,.fountain,application/pdf,text/plain"></label>
+    <label for="paste">Or paste the scene</label>
+    <textarea id="paste" rows="8" placeholder="INT. KITCHEN - NIGHT&#10;&#10;SAM&#10;Did you lock the door?&#10;&#10;ALEX&#10;(half asleep)&#10;Twice."></textarea>
+    <div class="row">
+      <button class="tbtn primary" id="usePaste" type="button">Use pasted text</button>
+      <button class="tbtn" id="useSample" type="button">Load sample scene</button>
+      <button class="tbtn" id="closeSetup" type="button">Close</button>
+    </div>
+    <label class="check"><input type="checkbox" id="trackAction"> Follow stage directions too, for table reads where someone reads them aloud</label>
+    <p id="status" class="status" role="status"></p>
+  </div>
+</section>
+
+<div id="banner" class="banner" role="status" hidden></div>
+
+<main class="page"><article id="script" class="script" aria-live="off"></article></main>
+
+<nav class="transport" aria-label="Scene controls">
+  <div id="cueStrip" class="cue-strip" role="status" hidden><span id="cueLabel"></span><span id="cueWhen" class="when"></span></div>
+  <div id="mksheet" class="mksheet" hidden>
+    <div class="head">Focus mark before “<b id="mkWord"></b>”</div>
+    <div id="mkQuick" class="quick"></div>
+    <input id="mkLabel" type="text" maxlength="40" placeholder="e.g. Rack to Teddy 6'" aria-label="Mark label">
+    <div class="row">
+      <button class="tbtn primary" id="mkSave" type="button">Save mark</button>
+      <button class="tbtn" id="mkDelete" type="button">Remove</button>
+      <button class="tbtn" id="mkCancel" type="button">Cancel</button>
+      <button class="tbtn" id="mkClear" type="button" style="margin-left:auto">Clear all marks</button>
+    </div>
+  </div>
+  <div class="tr-row">
+    <button class="tbtn" id="prev" type="button">Back</button>
+    <button class="listen" id="listen" type="button" aria-pressed="false"><span class="dot"></span><span id="listenLabel">Listen</span></button>
+    <button class="tbtn" id="next" type="button">Next</button>
+  </div>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>
+const SAMPLE=`INT. ALL-NIGHT DINER - 3 A.M.
+
+Rain on the windows. MARGO (40s, ferry captain's jacket) slides into a booth across from her brother TEDDY (30s), who hasn't touched his coffee.
+
+MARGO
+You said it was an emergency.
+
+TEDDY
+It is. Sort of.
+
+MARGO
+Teddy, I left a boat full of tourists at the dock.
+
+TEDDY
+(not looking up)
+I sold Dad's truck.
+
+A long beat. The waitress, JUNE (60s), arrives with a pot of coffee.
+
+JUNE
+Top you off, hon?
+
+MARGO
+Please. Something stronger if you've got it.
+
+JUNE
+This is a diner. I've got pie.
+
+She pours and moves off.
+
+MARGO
+Who did you sell it to?
+
+TEDDY
+Guy from Hope. Paid cash. He said he'd keep the dent in the tailgate.
+
+MARGO
+That dent is the only part worth keeping.
+
+TEDDY
+That's what I told him.
+
+Margo almost laughs. She reaches across, takes his cold coffee and drinks it anyway.
+
+MARGO
+How much?
+
+TEDDY
+Enough to fix the roof before winter.
+
+MARGO
+(quiet)
+Then you did the right thing.`;
+
+const HUES=[52,330,140,205,28,275,172,0];
+const NUM={0:'zero',1:'one',2:'two',3:'three',4:'four',5:'five',6:'six',7:'seven',8:'eight',9:'nine',10:'ten',11:'eleven',12:'twelve',20:'twenty',100:'hundred'};
+const $=s=>document.querySelector(s);
+const scriptEl=$('#script'),chipsEl=$('#chips'),statusEl=$('#status'),bannerEl=$('#banner'),progEl=$('#progress');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let blocks=[],words=[],starts=[],ptr=0,hidden=new Set(),hueOf={},trackAction=false,nowSp=null,nextEl=null,heard=[];
+let all=[],markers=new Map(),markMode=false,docName='Sample: The Truck',editIdx=-1,hold=null,holdTimer;
+const WARN=6;
+
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function norm(w){const n=w.toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9]/g,'');return NUM[n]||n}
+function norms(s){return s.split(/\s+/).map(norm).filter(Boolean)}
+let bannerTimer;
+function banner(msg,ms){bannerEl.textContent=msg;bannerEl.hidden=false;clearTimeout(bannerTimer);if(ms)bannerTimer=setTimeout(()=>bannerEl.hidden=true,ms)}
+
+/* ---------- parsing ---------- */
+const SKIP=/^(\(?(MORE|CONTINUED|CONT'?D)\)?:?|\d+\.?|CONTINUED:?\s*(\(\d+\))?)$/i;
+function classify(lines,useIndent){
+  const out=[];let cur=null,lastAction=null;
+  for(let i=0;i<lines.length;i++){
+    const L=lines[i];
+    if(L.blank){cur=null;lastAction=null;continue}
+    const t=L.text;if(SKIP.test(t))continue;
+    const caps=/[A-Z]/.test(t)&&t===t.toUpperCase();
+    if((caps&&/^(INT|EXT|EST|I\/E|INT\.?\/EXT)[\.\s\/]/i.test(t))||/^\.[A-Z]/.test(t)){out.push({type:'scene',text:t.replace(/^\./,'').replace(/\s+\d+[A-Z]?$/,'')});cur=null;lastAction=null;continue}
+    if(caps&&/(TO:|IN:|OUT\.|TO BLACK\.?)$/.test(t)){out.push({type:'trans',text:t});cur=null;lastAction=null;continue}
+    const bare=t.replace(/\(.*?\)/g,'').replace(/\^$/,'').trim();
+    const cueish=(caps&&t.length<=45&&bare.length>0&&!/[!?.,]$/.test(bare))||/^@/.test(t);
+    const nxt=lines[i+1];
+    if(cueish&&(useIndent?(L.dx>=95&&L.dx<240):(nxt&&!nxt.blank))){
+      const ext=(t.match(/\((?!CONT)[^)]*\)/i)||[''])[0];
+      const name=bare.replace(/^@/,'').replace(/\s+CONT'?D\.?$/i,'').replace(/\s+/g,' ').trim();
+      cur={type:'speech',char:name,ext,parts:[]};out.push(cur);lastAction=null;continue}
+    if(cur&&(!useIndent||L.dx>=30)){
+      const last=cur.parts[cur.parts.length-1];
+      if(last&&last.type==='paren'&&!last.text.includes(')'))last.text+=' '+t;
+      else if(t.startsWith('('))cur.parts.push({type:'paren',text:t});
+      else if(last&&last.type==='dia')last.text+=' '+t;
+      else cur.parts.push({type:'dia',text:t});
+      continue}
+    cur=null;
+    if(lastAction)lastAction.text+=' '+t;else{lastAction={type:'action',text:t};out.push(lastAction)}
+  }
+  return out;
+}
+function parseText(text){
+  const raw=text.replace(/\t/g,'    ').split(/\r?\n/);
+  const ind=raw.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length);
+  const useIndent=ind.filter(n=>n>=8).length>ind.length*0.3;
+  const min=useIndent?Math.min(...ind):0;
+  return classify(raw.map(l=>({text:l.trim(),blank:!l.trim(),dx:(l.match(/^ */)[0].length-min)*7.2})),useIndent);
+}
+async function parsePdf(file){
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const rows=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);const h=page.getViewport({scale:1}).height;
+    const tc=await page.getTextContent();
+    const items=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({x:i.transform[4],y:i.transform[5],w:i.width,s:i.str}));
+    const groups=[];
+    for(const it of items){let g=groups.find(g=>Math.abs(g.y-it.y)<2.5);if(!g){g={y:it.y,items:[]};groups.push(g)}g.items.push(it)}
+    groups.sort((a,b)=>b.y-a.y);
+    const pageRows=[];
+    for(const g of groups){
+      if(g.y>h-48||g.y<30)continue;
+      const its=g.items.sort((a,b)=>a.x-b.x);
+      while(its.length>1&&/^\d+[A-Z]?\.?$/.test(its[0].s.trim()))its.shift();
+      while(its.length>1&&/^\d+[A-Z]?\.?$/.test(its[its.length-1].s.trim()))its.pop();
+      let text='';let end=null;
+      for(const it of its){if(end!==null&&it.x-end>1.5&&!/\s$/.test(text))text+=' ';text+=it.s;end=it.x+it.w}
+      pageRows.push({text:text.replace(/\s+/g,' ').trim(),x:its[0].x,y:g.y});
+    }
+    const gaps=[];for(let i=1;i<pageRows.length;i++)gaps.push(pageRows[i-1].y-pageRows[i].y);
+    const lh=gaps.length?gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)]:12;
+    pageRows.forEach((r,i)=>{if(i>0&&pageRows[i-1].y-r.y>lh*1.5)rows.push({blank:true});rows.push(r)});
+    rows.push({blank:true});
+  }
+  const real=rows.filter(r=>!r.blank);
+  if(!real.length)throw new Error('no text found. It may be a scanned PDF; paste the text instead');
+  const long=real.filter(r=>r.text.length>25);
+  const left=Math.min(...(long.length?long:real).map(r=>r.x));
+  return classify(rows.map(r=>r.blank?r:{text:r.text,dx:r.x-left,blank:false}),true);
+}
+
+/* ---------- render ---------- */
+function addWords(p,text,owner,tracked){
+  text.split(/(\s+)/).forEach(tok=>{
+    if(!tok)return;if(/^\s+$/.test(tok)){p.append(tok);return}
+    const s=el('span','w',tok);const n=norm(tok);
+    s.dataset.g=all.length;const rec={n,el:s,sp:owner,at:0};all.push(rec);
+    if(n&&tracked){s.dataset.i=words.length;words.push(rec)}
+    p.append(s)});
+}
+function render(){
+  scriptEl.textContent='';words=[];all=[];starts=[];hueOf={};nowSp=null;nextEl=null;ptr=0;heard=[];
+  const order=[],counts={};
+  blocks.forEach(b=>{if(b.type==='speech'){if(!(b.char in counts)){counts[b.char]=0;order.push(b.char)}counts[b.char]++}});
+  const savedCols=loadCols();
+  order.forEach((c,i)=>hueOf[c]=c in savedCols?savedCols[c]:HUES[i%HUES.length]);
+  closePalette();
+  const frag=document.createDocumentFragment();
+  for(const b of blocks){
+    if(b.type==='scene'){frag.append(el('h2','scene',b.text));continue}
+    if(b.type==='trans'){frag.append(el('p','trans',b.text));continue}
+    if(b.type==='action'){const p=el('p','action');if(trackAction)starts.push(words.length);addWords(p,b.text,p,trackAction);frag.append(p);continue}
+    const sp=el('div','speech');sp.style.setProperty('--h',hueOf[b.char]);sp.dataset.char=b.char;
+    if(hidden.has(b.char))sp.classList.add('off');
+    const cue=el('div','cue',b.char);if(b.ext)cue.append(' ',el('span','ext',b.ext));sp.append(cue);
+    let first=true;
+    for(const part of b.parts){
+      if(part.type==='paren'){sp.append(el('div','paren',part.text));continue}
+      const p=el('p','dia');if(first){starts.push(words.length);first=false}addWords(p,part.text,sp,true);sp.append(p)}
+    frag.append(sp);
+  }
+  scriptEl.append(frag);
+  let nextT=words.length;
+  for(let g=all.length-1;g>=0;g--){if(all[g].el.dataset.i!==undefined)nextT=+all[g].el.dataset.i;all[g].at=nextT}
+  renderChips(order,counts);
+  loadMarks();
+  setPtr(0,'none');
+  return order.length;
+}
+function renderChips(order,counts){
+  chipsEl.textContent='';
+  order.forEach(c=>{
+    const chip=el('span','chip');chip.style.setProperty('--h',hueOf[c]);chip.dataset.char=c;
+    const swb=el('button','swb');swb.type='button';swb.setAttribute('aria-label','Change colour for '+c);swb.append(el('span','sw'));
+    swb.onclick=()=>openPalette(c);
+    const nmb=el('button','nmb');nmb.type='button';nmb.setAttribute('aria-pressed',String(!hidden.has(c)));
+    nmb.append(el('span','nm',c),el('span','ct',counts[c]));
+    nmb.onclick=()=>{hidden.has(c)?hidden.delete(c):hidden.add(c);nmb.setAttribute('aria-pressed',String(!hidden.has(c)));chip.classList.toggle('hiddenc',hidden.has(c));
+      scriptEl.querySelectorAll('.speech').forEach(s=>{if(s.dataset.char===c)s.classList.toggle('off',hidden.has(c))})};
+    chip.append(swb,nmb);chipsEl.append(chip)});
+}
+const PALETTE=[52,28,0,330,300,275,205,172,140,85];
+let palChar=null;
+function colKey(){return 'sp-col:'+docName}
+function loadCols(){try{return JSON.parse(localStorage.getItem(colKey())||'{}')}catch(_){return {}}}
+function setHue(c,h){
+  hueOf[c]=h;
+  scriptEl.querySelectorAll('.speech').forEach(s=>{if(s.dataset.char===c)s.style.setProperty('--h',h)});
+  chipsEl.querySelectorAll('.chip').forEach(ch=>{if(ch.dataset.char===c)ch.style.setProperty('--h',h)});
+  const cols=loadCols();cols[c]=h;try{localStorage.setItem(colKey(),JSON.stringify(cols))}catch(_){}
+  $('#palHue').value=h;
+  $('#palSw').querySelectorAll('.pick').forEach(p=>p.setAttribute('aria-pressed',String(+p.dataset.h===h)));
+}
+function openPalette(c){
+  if(palChar===c){closePalette();return}
+  palChar=c;$('#palName').textContent=c;
+  const box=$('#palSw');box.textContent='';
+  PALETTE.forEach(h=>{const b=el('button','pick');b.type='button';b.dataset.h=h;b.style.setProperty('--h',h);b.setAttribute('aria-label','Hue '+h);b.setAttribute('aria-pressed',String(hueOf[c]===h));b.onclick=()=>setHue(c,h);box.append(b)});
+  $('#palHue').value=hueOf[c];$('#palHue').style.accentColor=`hsl(${hueOf[c]} 90% 45%)`;
+  chipsEl.querySelectorAll('.chip').forEach(ch=>ch.classList.toggle('picking',ch.dataset.char===c));
+  $('#palette').hidden=false;
+}
+function closePalette(){palChar=null;$('#palette').hidden=true;chipsEl.querySelectorAll('.chip').forEach(ch=>ch.classList.remove('picking'))}
+$('#palHue').oninput=e=>{if(palChar){setHue(palChar,+e.target.value);e.target.style.accentColor=`hsl(${e.target.value} 90% 45%)`}};
+$('#palDone').onclick=closePalette;
+
+/* ---------- position ---------- */
+function setPtr(n,scroll){
+  n=Math.max(0,Math.min(words.length,n));
+  if(n>ptr){for(const [,m] of markers)if(m.at>=ptr&&m.at<n){hold=m.label;clearTimeout(holdTimer);holdTimer=setTimeout(()=>{hold=null;updateCue()},1800)}}
+  else if(n<ptr)hold=null;
+  const lo=Math.min(ptr,n),hi=Math.max(ptr,n);
+  for(let i=lo;i<hi;i++)words[i].el.classList.toggle('said',i<n);
+  ptr=n;
+  if(nextEl)nextEl.classList.remove('next');
+  nextEl=words[ptr]?words[ptr].el:null;if(nextEl)nextEl.classList.add('next');
+  const w=words[ptr]||words[ptr-1];const sp=w?w.sp:null;
+  if(sp!==nowSp){if(nowSp)nowSp.classList.remove('now');nowSp=sp;if(sp)sp.classList.add('now')}
+  const k=starts.filter(s=>s<=ptr).length;
+  progEl.textContent=starts.length?`Line ${Math.max(1,k)} of ${starts.length}`:'';
+  updateCue();
+  if(w&&scroll!=='none')follow(w.el,scroll==='jump');
+}
+function follow(t,force){
+  const r=t.getBoundingClientRect(),vh=innerHeight;
+  if(force||r.top<vh*.22||r.top>vh*.5)scrollTo({top:scrollY+r.top-vh*.36,behavior:reduce?'auto':'smooth'});
+}
+function nextLine(){const s=starts.find(s=>s>ptr);setPtr(s===undefined?words.length:s,'jump');heard=[]}
+function prevLine(){let s=0;for(const x of starts){if(x<ptr)s=x;else break}setPtr(s,'jump');heard=[]}
+
+/* ---------- focus marks ---------- */
+function markKey(){return 'sp-mk2:'+docName+':'+all.length}
+function saveMarks(){try{localStorage.setItem(markKey(),JSON.stringify([...markers].map(([g,m])=>[g,m.label])))}catch(_){}
+  $('#markMode').textContent=markers.size?`Marks (${markers.size})`:'Marks'}
+function loadMarks(){
+  markers=new Map();hold=null;
+  let saved=[];try{saved=JSON.parse(localStorage.getItem(markKey())||'[]')}catch(_){}
+  saved.forEach(([g,l])=>{if(all[g])placeMark(g,l)});
+  $('#markMode').textContent=markers.size?`Marks (${markers.size})`:'Marks';
+}
+function placeMark(g,label){
+  removeMark(g);
+  const f=el('button','mk',label);f.type='button';f.dataset.mk=g;f.title='Focus mark: '+label;
+  all[g].el.before(f);markers.set(g,{label,el:f,at:all[g].at});
+  if(all[g].at<ptr)f.classList.add('hit');
+}
+function removeMark(i){const m=markers.get(i);if(m){m.el.remove();markers.delete(i)}}
+function updateCue(){
+  const strip=$('#cueStrip');
+  let up=null;for(const [g,m] of markers)if(m.at>=ptr&&(!up||m.at<up.m.at||(m.at===up.m.at&&g<up.g)))up={g,m};
+  markers.forEach(m=>m.el.classList.toggle('hit',m.at<ptr));
+  const d=up?up.m.at-ptr:Infinity;
+  if(d<=WARN){
+    $('#cueLabel').textContent=up.m.label;
+    $('#cueWhen').textContent=d===0?'Now':`in ${d} word${d===1?'':'s'}`;
+    strip.classList.toggle('now',d===0);strip.hidden=false;
+  }else if(hold){
+    $('#cueLabel').textContent=hold;$('#cueWhen').textContent='Now';strip.classList.add('now');strip.hidden=false;
+  }else strip.hidden=true;
+}
+function speakerAfter(g,own){
+  for(let j=all[g].at;j<words.length;j++){const c=words[j].sp.dataset.char;if(c&&c!==own)return c}
+  return null;
+}
+function openMarkSheet(g){
+  editIdx=g;const m=markers.get(g);
+  const isAction=!all[g].sp.dataset.char;
+  $('#mkWord').textContent=all[g].el.textContent+(isAction?' (action)':'');
+  const own=all[g].sp.dataset.char,after=speakerAfter(g,own);
+  const opts=[];if(own)opts.push('Rack to '+own);if(after&&after!==own)opts.push('Rack to '+after);
+  Object.keys(hueOf).forEach(c=>{const o='Rack to '+c;if(!opts.includes(o))opts.push(o)});
+  opts.push('Pull wide','Hold');
+  const q=$('#mkQuick');q.textContent='';
+  opts.forEach(o=>{const b=el('button','tbtn',o);b.type='button';b.onclick=()=>{$('#mkLabel').value=o;$('#mkLabel').focus()};q.append(b)});
+  $('#mkLabel').value=m?m.label:(opts[0]||'Rack');
+  $('#mkDelete').hidden=!m;$('#mkClear').textContent='Clear all marks';$('#mkClear').hidden=!markers.size;
+  $('#mksheet').hidden=false;
+}
+function closeMarkSheet(){$('#mksheet').hidden=true;editIdx=-1}
+function setMarkMode(on){
+  markMode=on;$('#markMode').setAttribute('aria-pressed',String(on));document.body.classList.toggle('marking',on);
+  if(on)banner('Marks on: tap a word to place a focus mark before it. Tap a mark to edit it. Press Marks again when you’re done.',6000);
+  else{closeMarkSheet();bannerEl.hidden=true}
+}
+$('#markMode').onclick=()=>setMarkMode(!markMode);
+$('#mkSave').onclick=()=>{const l=$('#mkLabel').value.trim()||'Rack';if(editIdx>=0){placeMark(editIdx,l);saveMarks();updateCue()}closeMarkSheet()};
+$('#mkLabel').onkeydown=e=>{if(e.key==='Enter')$('#mkSave').click()};
+$('#mkDelete').onclick=()=>{if(editIdx>=0){removeMark(editIdx);saveMarks();updateCue()}closeMarkSheet()};
+$('#mkCancel').onclick=closeMarkSheet;
+$('#mkClear').onclick=e=>{
+  if(e.target.dataset.armed!=='1'){e.target.dataset.armed='1';e.target.textContent=`Tap again to clear ${markers.size}`;return}
+  e.target.dataset.armed='';[...markers.keys()].forEach(removeMark);saveMarks();updateCue();closeMarkSheet()};
+
+/* ---------- speech following ---------- */
+function sim(a,b){return a===b||(a.length>=4&&b.length>=4&&(a.startsWith(b)||b.startsWith(a)))}
+function lcs(x,y){const d=Array.from({length:x.length+1},()=>new Array(y.length+1).fill(0));
+  for(let i=1;i<=x.length;i++)for(let j=1;j<=y.length;j++)d[i][j]=sim(x[i-1],y[j-1])?d[i-1][j-1]+1:Math.max(d[i-1][j],d[i][j-1]);
+  return d[x.length][y.length]}
+function track(tail){
+  if(!tail.length||!words.length)return;
+  const a=tail[tail.length-1],b=tail[tail.length-2];
+  let best=-1,bestS=-Infinity;const end=Math.min(words.length-1,ptr+60);
+  for(let p=Math.max(0,ptr-2);p<=end;p++){
+    const wn=words[p].n;if(!(sim(a,wn)||(b&&sim(b,wn))))continue;
+    const seg=[];for(let j=Math.max(0,p-9);j<=p;j++)seg.push(words[j].n);
+    const s=lcs(tail,seg);const need=Math.min(3,tail.length,p+1)+(p-ptr>15?1:0);
+    if(s<need)continue;
+    const adj=s-(p-ptr)*0.03;if(adj>bestS){bestS=adj;best=p}
+  }
+  if(best>=0&&best+1>ptr)setPtr(best+1);
+}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const MIC_MSG="Couldn't use the microphone. Inside the Claude app this page can't reach the mic, so open the HTML file in Chrome or Safari and allow microphone access. Back and Next still work here, as do Space and the arrow keys.";
+let rec=null,listening=false,lock=null;
+function setListenUI(){$('#listen').setAttribute('aria-pressed',String(listening));$('#listenLabel').textContent=listening?'Listening':'Listen';document.body.classList.toggle('listening',listening)}
+function startListen(){
+  if(!SR){banner("This browser doesn't offer speech recognition. Use Chrome or Safari, or move through the scene with Back and Next.");return}
+  rec=new SR();rec.continuous=true;rec.interimResults=true;rec.lang=navigator.language||'en-US';
+  rec.onresult=e=>{let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)heard.push(...norms(r[0].transcript));else interim+=' '+r[0].transcript}
+    if(heard.length>40)heard=heard.slice(-40);
+    track(heard.concat(norms(interim)).slice(-8))};
+  rec.onerror=e=>{
+    if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error)){stopListen();banner(MIC_MSG)}
+    else if(e.error==='network'){stopListen();banner('Speech recognition needs an internet connection. Check the connection and press Listen again.')}};
+  rec.onend=()=>{if(listening)setTimeout(()=>{if(listening)try{rec.start()}catch(_){}},200)};
+  try{rec.start()}catch(_){banner(MIC_MSG);return}
+  listening=true;heard=[];setListenUI();bannerEl.hidden=true;
+  if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>lock=l).catch(()=>{});
+  if(nextEl)follow(nextEl,true);
+}
+function stopListen(){listening=false;try{rec&&rec.stop()}catch(_){}setListenUI();if(lock){lock.release().catch(()=>{});lock=null}}
+
+/* ---------- loading ---------- */
+function load(blocksIn,name){
+  if(!blocksIn.some(b=>b.type==='speech')){statusEl.textContent="Couldn't find any character names. Check that names are in capitals on their own line, with dialogue directly below.";return false}
+  blocks=blocksIn;hidden.clear();docName=name;closeMarkSheet();
+  const n=render();
+  $('#docname').textContent=name;$('#setup').hidden=true;statusEl.textContent='';
+  scrollTo({top:0});
+  banner(`Loaded ${n} character${n===1?'':'s'} and ${starts.length} lines. Tap a character to turn its highlight off, or tap any word to jump there.`,6000);
+  return true;
+}
+$('#file').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;statusEl.textContent='Reading '+f.name+'…';
+  try{
+    let b;
+    if(/\.pdf$/i.test(f.name)||f.type==='application/pdf'){
+      if(!window.pdfjsLib){statusEl.textContent="The PDF reader didn't load. Check your connection, or paste the text instead.";return}
+      b=await parsePdf(f)}
+    else b=parseText(await f.text());
+    load(b,f.name.replace(/\.[^.]+$/,''));
+  }catch(err){statusEl.textContent='Could not read that file: '+err.message+'.'}
+  e.target.value='';
+};
+$('#usePaste').onclick=()=>{const t=$('#paste').value;if(!t.trim()){statusEl.textContent='Paste a scene into the box first.';return}load(parseText(t),'Pasted sides')};
+$('#useSample').onclick=()=>load(parseText(SAMPLE),'Sample: The Truck');
+$('#openSetup').onclick=()=>{const s=$('#setup');s.hidden=!s.hidden;if(!s.hidden)scrollTo({top:0})};
+$('#closeSetup').onclick=()=>$('#setup').hidden=true;
+$('#trackAction').onchange=e=>{trackAction=e.target.checked;closeMarkSheet();if(blocks.length)render()};
+$('#next').onclick=nextLine;$('#prev').onclick=prevLine;
+$('#listen').onclick=()=>listening?stopListen():startListen();
+scriptEl.onclick=e=>{
+  const mk=e.target.closest('.mk');if(mk){openMarkSheet(+mk.dataset.mk);return}
+  const w=e.target.closest('.w');if(!w||w.dataset.g===undefined)return;
+  if(markMode){openMarkSheet(+w.dataset.g);return}
+  setPtr(w.dataset.i!==undefined?+w.dataset.i:all[+w.dataset.g].at);heard=[]};
+
+let fs=18;try{fs=+localStorage.getItem('sp-fs')||18}catch(_){}
+function applyFs(){document.documentElement.style.setProperty('--fs',fs+'px');try{localStorage.setItem('sp-fs',fs)}catch(_){}}
+$('#smaller').onclick=()=>{fs=Math.max(14,fs-2);applyFs()};
+$('#bigger').onclick=()=>{fs=Math.min(34,fs+2);applyFs()};
+applyFs();
+
+addEventListener('keydown',e=>{
+  if(e.target.closest('textarea,input'))return;
+  if([' ','ArrowDown','PageDown','ArrowRight'].includes(e.key)){e.preventDefault();nextLine()}
+  else if(['ArrowUp','PageUp','ArrowLeft'].includes(e.key)){e.preventDefault();prevLine()}
+  else if(e.key==='l'||e.key==='L'){listening?stopListen():startListen()}
+  else if(e.key==='m'||e.key==='M'){setMarkMode(!markMode)}
+});
+document.addEventListener('visibilitychange',()=>{if(listening&&document.visibilityState==='visible'&&navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>lock=l).catch(()=>{})});
+
+blocks=parseText(SAMPLE);render();$('#docname').textContent='Sample: The Truck';
+</script>
+
+</body>
+</html>
