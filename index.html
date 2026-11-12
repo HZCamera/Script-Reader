@@ -175,6 +175,8 @@ body.marking .w:hover{outline:1px dashed var(--mark);outline-offset:1px}
       <button class="tbtn" id="micFind" type="button">Find microphones</button>
     </div>
     <div class="meter" aria-hidden="true"><span id="micLevel"></span></div>
+    <label class="check" id="localWrap" hidden><input type="checkbox" id="localSR"> Use Chrome's on-device speech recognition. It's faster and works offline. Needs a recent version of Chrome.</label>
+    <p class="hint" id="localNote" hidden></p>
     <p class="hint" id="micHint">Pick the mic closest to the cast, such as a lav receiver or the boom feed through an audio interface. The bar moves when the selected mic hears sound.</p>
 
     <h2 class="sec">Text size</h2>
@@ -438,15 +440,16 @@ function setPtr(n,scroll){
   if(nextEl)nextEl.classList.remove('next');
   nextEl=words[ptr]?words[ptr].el:null;if(nextEl)nextEl.classList.add('next');
   const w=words[ptr]||words[ptr-1];const sp=w?w.sp:null;
-  if(sp!==nowSp){if(nowSp)nowSp.classList.remove('now');nowSp=sp;if(sp)sp.classList.add('now')}
+  const newBlock=sp!==nowSp;
+  if(newBlock){if(nowSp)nowSp.classList.remove('now');nowSp=sp;if(sp)sp.classList.add('now')}
   const k=starts.filter(s=>s<=ptr).length;
   progEl.textContent=starts.length?`Line ${Math.max(1,k)} of ${starts.length}`:'';
   updateCue();
-  if(w&&scroll!=='none')follow(w.el,scroll==='jump');
+  if(w&&scroll!=='none')follow(w.el,scroll==='jump'||newBlock);
 }
 function follow(t,force){
   const r=t.getBoundingClientRect(),vh=innerHeight;
-  if(force||r.top<vh*.22||r.top>vh*.5)scrollTo({top:scrollY+r.top-vh*.36,behavior:reduce?'auto':'smooth'});
+  if(force||r.top<vh*.2||r.top>vh*.42)scrollTo({top:scrollY+r.top-vh*.32,behavior:reduce?'auto':'smooth'});
 }
 function nextLine(){const s=starts.find(s=>s>ptr);setPtr(s===undefined?words.length:s,'jump');heard=[]}
 function prevLine(){let s=0;for(const x of starts){if(x<ptr)s=x;else break}setPtr(s,'jump');heard=[]}
@@ -526,13 +529,34 @@ function track(tail){
   for(let p=Math.max(0,ptr-2);p<=end;p++){
     const wn=words[p].n;if(!(sim(a,wn)||(b&&sim(b,wn))))continue;
     const seg=[];for(let j=Math.max(0,p-9);j<=p;j++)seg.push(words[j].n);
-    const s=lcs(tail,seg);const need=Math.min(3,tail.length,p+1)+(p-ptr>15?1:0);
+    const gap=p-ptr;
+    if(gap<=2&&sim(a,wn)){const adj=Math.max(lcs(tail,seg),1.5)-gap*0.03;if(adj>bestS){bestS=adj;best=p}continue}
+    const s=lcs(tail,seg);const need=Math.min(gap<=8?2:3,tail.length,p+1)+(gap>15?1:0);
     if(s<need)continue;
     const adj=s-(p-ptr)*0.03;if(adj>bestS){bestS=adj;best=p}
   }
   if(best>=0&&best+1>ptr)setPtr(best+1);
 }
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const LANG=navigator.language||'en-US';
+let onDevice=false;
+try{onDevice=localStorage.getItem('sp-local')==='1'}catch(_){}
+
+function setLocalNote(t){$('#localNote').textContent=t}
+async function enableOnDevice(){
+  setLocalNote('Checking…');
+  try{
+    let st=await SR.available({langs:[LANG],processLocally:true});
+    if(st==='downloadable'||st==='downloading'){
+      setLocalNote('Downloading Chrome\'s speech model. This happens once and can take a minute…');
+      const ok=await SR.install({langs:[LANG],processLocally:true});
+      st=ok?'available':'unavailable';
+    }
+    if(st==='available'){onDevice=true;try{localStorage.setItem('sp-local','1')}catch(_){}setLocalNote('On. Listening runs on this computer.');return}
+    setLocalNote("This computer can't run Chrome's on-device speech. Cloud recognition will be used.");
+  }catch(_){setLocalNote("Couldn't turn it on. Cloud recognition will be used.")}
+  onDevice=false;$('#localSR').checked=false;try{localStorage.removeItem('sp-local')}catch(_){}
+}
 const MIC_MSG="Couldn't use the microphone. Allow microphone access for this site in your browser settings, then press Listen again. On an iPhone, if Chrome still refuses, open this page in Safari. Back and Next still work, as do Space and the arrow keys.";
 let rec=null,listening=false,lock=null,micTrack=null;
 let micId='';try{micId=localStorage.getItem('sp-mic')||''}catch(_){}
@@ -575,6 +599,8 @@ $('#micSel').onchange=e=>{micId=e.target.value;try{localStorage.setItem('sp-mic'
 if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener)navigator.mediaDevices.addEventListener('devicechange',listMics);
 if(isIOS)$('#micHint').textContent='On iPhone and iPad, iOS picks the microphone. Plug in or connect the mic you want (wired, Lightning/USB-C or Bluetooth) and it switches to it. The bar shows what it\'s hearing.';
 listMics();
+if(SR&&typeof SR.available==='function'&&!isIOS){$('#localWrap').hidden=false;$('#localSR').checked=onDevice;
+  $('#localSR').onchange=e=>{$('#localNote').hidden=false;if(e.target.checked)enableOnDevice();else{onDevice=false;try{localStorage.removeItem('sp-local')}catch(_){}setLocalNote('Off. Cloud recognition will be used.')}}}
 async function getMicTrack(){
   if(!micId||isIOS)return null;
   try{const st=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:micId}}});return st.getAudioTracks()[0]||null}
@@ -587,10 +613,12 @@ function recStart(){
 function setListenUI(){$('#listen').setAttribute('aria-pressed',String(listening));$('#listenLabel').textContent=listening?'Listening':'Listen';document.body.classList.toggle('listening',listening)}
 async function startListen(){
   if(!SR){banner("This browser doesn't offer speech recognition. Use Chrome or Safari, or move through the scene with Back and Next.");return}
-  rec=new SR();rec.continuous=true;rec.interimResults=true;rec.lang=navigator.language||'en-US';
+  rec=new SR();rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;rec.lang=LANG;
+  if(onDevice){try{rec.processLocally=true}catch(_){}}
+  const mode=onDevice?'on-device':'cloud';
   let lastText='';
   const hl=$('#heardLine');
-  rec.onstart=()=>{hl.hidden=false;hl.innerHTML='';hl.append(el('b',null,'Mic on: '),'waiting for speech…')};
+  rec.onstart=()=>{hl.hidden=false;hl.innerHTML='';hl.append(el('b',null,'Mic on ('+mode+'): '),'waiting for speech…')};
   rec.onaudiostart=()=>{if(!lastText){hl.textContent='';hl.append(el('b',null,'Mic on: '),'hearing audio, waiting for words…')}};
   rec.onresult=e=>{let interim='';
     for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){heard.push(...norms(r[0].transcript));lastText+=' '+r[0].transcript}else interim+=' '+r[0].transcript}
@@ -600,9 +628,10 @@ async function startListen(){
     track(heard.concat(norms(interim)).slice(-8))};
   rec.onerror=e=>{
     if(e.error&&e.error!=='no-speech'&&e.error!=='aborted'){hl.hidden=false;hl.textContent='';hl.append(el('b',null,'Mic error: '),e.error)}
+    if(onDevice&&(e.error==='language-not-supported'||e.error==='service-not-allowed')){onDevice=false;try{localStorage.removeItem('sp-local')}catch(_){}$('#localSR').checked=false;stopListen();startListen();return}
     if(['not-allowed','service-not-allowed','audio-capture'].includes(e.error)){stopListen();banner(MIC_MSG)}
     else if(e.error==='network'){stopListen();banner('Speech recognition needs an internet connection. Check the connection and press Listen again.')}};
-  rec.onend=()=>{if(listening)setTimeout(()=>{if(listening)try{recStart()}catch(_){}},200)};
+  rec.onend=()=>{if(listening){try{recStart()}catch(_){setTimeout(()=>{if(listening)try{recStart()}catch(_){}},150)}}};
   stopMeter();
   if(micTrack){micTrack.stop();micTrack=null}
   if(micId&&!isIOS)micTrack=await getMicTrack();
